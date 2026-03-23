@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Splitter</title>
+<style>
+body { margin:0; overflow:hidden; font-family:sans-serif; background:#fff; transition: background 0.3s; }
+canvas { display:block; }
+#menu {
+  position: fixed; top:10px; left:50%;
+  transform: translateX(-50%);
+  background: rgba(255,255,255,0.9);
+  backdrop-filter: blur(10px);
+  padding:12px 20px;
+  border-radius:12px;
+  text-align:center;
+}
+#menuTitle { font-size:28px; font-weight:bold; margin-bottom:10px; }
+button { margin:4px; padding:6px 10px; border:none; border-radius:8px; cursor:pointer; transition: background 0.3s, color 0.3s;}
+button.active { background:#333; color:#fff;}
+input[type="color"] { width:40px; height:30px; border:none; padding:0; margin:2px; cursor:pointer; }
+input[type="range"] { width:120px; }
+#modeDisplay {
+  position: fixed; top:10px; right:10px;
+  background: rgba(255,255,255,0.9);
+  padding:8px 12px; border-radius:12px;
+  font-weight:bold; font-size:16px;
+  backdrop-filter: blur(10px);
+}
+#showMenuBtn {
+  position: fixed; top:10px; left:50%;
+  transform: translateX(-50%);
+  display:none;
+  z-index:1000;
+}
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <div id="menuTitle">Splitter</div>
+  <div>Speed: <input type="range" id="speed" min="0.2" max="3" step="0.1" value="1"></div>
+  <div>
+    Ball Colors:
+    <input type="color" class="ballColor" value="#FF6B6B">
+    <input type="color" class="ballColor" value="#6BCBFF">
+    <input type="color" class="ballColor" value="#FFD93D">
+    <input type="color" class="ballColor" value="#6BFF95">
+  </div>
+  <div>
+    Mode:
+    <button id="splitBtn">Split</button>
+    <button id="explodeBtn">Explosion</button>
+    <button id="shootBtn">Shoot</button>
+    <button id="blackholeBtn">Black Hole</button>
+    <button id="disperseBtn">Disperse</button>
+  </div>
+  <div>
+    Options:
+    <button id="randomShapeBtn">Random Shapes</button>
+    <button id="emojiBtn">Emojis</button>
+    <button id="darkBtn">Dark Mode</button>
+    <button id="bgBtn">Background Color</button>
+    <button id="toggleMenuBtn">Hide Menu</button>
+  </div>
+</div>
+
+<button id="showMenuBtn">Show Menu</button>
+<div id="modeDisplay">Mode: Split</div>
+<canvas id="canvas"></canvas>
+
+<script>
+let canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let circles = [];
+let mode = "split";
+let speedMultiplier = 1;
+let dark = false;
+let mouse = {x:0, y:0, down:false};
+let randomShapes = false;
+let emojisOn = false;
+
+let ballColors = Array.from(document.getElementsByClassName("ballColor")).map(input => input.value);
+
+// Emoji list
+let emojiList = ["😀","🎉","💖","🌟","🔥","🍕","🐱","⚡","🍩","🥳"];
+
+// Circle class
+class Circle {
+  constructor(x,y,r,dx,dy,color,shape="circle"){
+    this.x=x; this.y=y; this.r=r; this.dx=dx; this.dy=dy; this.color=color;
+    this.shape = shape;
+    if(emojisOn) this.emoji = emojiList[Math.floor(Math.random()*emojiList.length)];
+  }
+  draw(){
+    if(emojisOn){
+      if(!this.emoji) this.emoji = emojiList[Math.floor(Math.random()*emojiList.length)];
+      ctx.font = `${this.r*1.5}px serif`;
+      ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(this.emoji,this.x,this.y);
+    } else {
+      if(this.shape==="circle") { ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fillStyle=this.color; ctx.fill(); }
+      else if(this.shape==="square") { ctx.fillStyle=this.color; ctx.fillRect(this.x-this.r,this.y-this.r,this.r*2,this.r*2); }
+      else if(this.shape==="triangle") { ctx.fillStyle=this.color; ctx.beginPath(); ctx.moveTo(this.x,this.y-this.r); ctx.lineTo(this.x-this.r,this.y+this.r); ctx.lineTo(this.x+this.r,this.y+this.r); ctx.closePath(); ctx.fill(); }
+      else if(this.shape==="star") drawStar(this.x,this.y,this.r,5,this.color);
+    }
+  }
+  update(){
+    if(mode==="blackhole" && mouse.down){
+      let dx = mouse.x - this.x;
+      let dy = mouse.y - this.y;
+      this.x += dx * 0.1 * speedMultiplier;
+      this.y += dy * 0.1 * speedMultiplier;
+    } else if(mode==="disperse"){
+      let dx = this.x - mouse.x;
+      let dy = this.y - mouse.y;
+      let dist = Math.hypot(dx,dy)||1;
+      this.x += (dx/dist) * 5 * speedMultiplier;
+      this.y += (dy/dist) * 5 * speedMultiplier;
+      this.x = Math.max(this.r, Math.min(canvas.width-this.r, this.x));
+      this.y = Math.max(this.r, Math.min(canvas.height-this.r, this.y));
+    } else {
+      this.x += this.dx * speedMultiplier;
+      this.y += this.dy * speedMultiplier;
+    }
+    if(this.x+this.r>canvas.width||this.x-this.r<0) this.dx*=-1;
+    if(this.y+this.r>canvas.height||this.y-this.r<0) this.dy*=-1;
+    this.draw();
+  }
+  clicked(mx,my){ return Math.hypot(this.x-mx,this.y-my)<this.r; }
+}
+
+// helpers
+function rand(min,max){ return Math.random()*(max-min)+min; }
+function randomBallColor(){ return ballColors[Math.floor(Math.random()*ballColors.length)]; }
+function randomShape(){ const shapes=["circle","square","triangle","star"]; return shapes[Math.floor(Math.random()*shapes.length)]; }
+function randomBackgroundColor(){ let bg; do { const options=["#FFB6C1","#87CEFA","#C1E1C1","#FFE4B5","#D8BFD8","#FAFAD2"]; bg=options[Math.floor(Math.random()*options.length)]; } while(ballColors.includes(bg)); return bg; }
+function drawStar(x, y, r, spikes, color){
+  let rot=Math.PI/2*3; let cx=x, cy=y; let step=Math.PI/spikes;
+  ctx.beginPath(); ctx.moveTo(cx,cy-r);
+  for(let i=0;i<spikes;i++){
+    let x1=cx+Math.cos(rot)*r, y1=cy+Math.sin(rot)*r; ctx.lineTo(x1,y1);
+    rot+=step;
+    let x2=cx+Math.cos(rot)*r/2, y2=cy+Math.sin(rot)*r/2; ctx.lineTo(x2,y2);
+    rot+=step;
+  }
+  ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+}
+
+// initial circles
+for(let i=0;i<6;i++){
+  circles.push(new Circle(rand(50,canvas.width-50),rand(50,canvas.height-50),50,rand(-2,2),rand(-2,2),randomBallColor(),randomShapes?randomShape():"circle"));
+}
+
+// animation
+function animate(){ ctx.clearRect(0,0,canvas.width,canvas.height); circles.forEach(c=>c.update()); requestAnimationFrame(animate); }
+animate();
+
+// UI bindings
+const modeButtons=["splitBtn","explodeBtn","shootBtn","blackholeBtn","disperseBtn"];
+const modeDisplay=document.getElementById("modeDisplay");
+const menu=document.getElementById("menu");
+const showMenuBtn=document.getElementById("showMenuBtn");
+
+function setActiveButton(activeId){ modeButtons.forEach(id=>document.getElementById(id).classList.remove("active")); if(activeId) document.getElementById(activeId).classList.add("active"); }
+
+document.getElementById("speed").addEventListener("input", e=>{ speedMultiplier=parseFloat(e.target.value); });
+Array.from(document.getElementsByClassName("ballColor")).forEach(input=>{ input.addEventListener("input", ()=>{ ballColors = Array.from(document.getElementsByClassName("ballColor")).map(i=>i.value); }); });
+
+document.getElementById("splitBtn").addEventListener("click", ()=>{ mode="split"; setActiveButton("splitBtn"); modeDisplay.textContent="Mode: Split"; });
+document.getElementById("explodeBtn").addEventListener("click", ()=>{ mode="explode"; setActiveButton("explodeBtn"); modeDisplay.textContent="Mode: Explosion"; });
+document.getElementById("shootBtn").addEventListener("click", ()=>{ mode="shoot"; setActiveButton("shootBtn"); modeDisplay.textContent="Mode: Shoot"; });
+document.getElementById("blackholeBtn").addEventListener("mousedown", ()=>{ mode="blackhole"; setActiveButton("blackholeBtn"); modeDisplay.textContent="Mode: Black Hole"; mouse.down=true; });
+document.getElementById("blackholeBtn").addEventListener("mouseup", ()=>{ mouse.down=false; circles.forEach(c=>{ c.dx=rand(-3,3); c.dy=rand(-3,3); }); });
+document.getElementById("disperseBtn").addEventListener("click", ()=>{ mode="disperse"; setActiveButton("disperseBtn"); modeDisplay.textContent="Mode: Disperse"; });
+
+document.getElementById("randomShapeBtn").addEventListener("click", ()=>{
+  randomShapes=!randomShapes; emojisOn=false;
+  document.getElementById("randomShapeBtn").classList.toggle("active");
+  document.getElementById("emojiBtn").classList.remove("active");
+});
+
+document.getElementById("emojiBtn").addEventListener("click", ()=>{
+  emojisOn=!emojisOn; randomShapes=false;
+  document.getElementById("emojiBtn").classList.toggle("active");
+  document.getElementById("randomShapeBtn").classList.remove("active");
+  if(emojisOn){
+    circles.forEach(c=>c.emoji=emojiList[Math.floor(Math.random()*emojiList.length)]);
+  }
+});
+
+document.getElementById("darkBtn").addEventListener("click", ()=>{ dark=!dark; document.body.style.background=dark?"#111":"#fff"; });
+document.getElementById("bgBtn").addEventListener("click", ()=>{ document.body.style.background=randomBackgroundColor(); });
+
+document.getElementById("toggleMenuBtn").addEventListener("click", ()=>{ menu.style.display="none"; showMenuBtn.style.display="block"; });
+showMenuBtn.addEventListener("click", ()=>{ menu.style.display="block"; showMenuBtn.style.display="none"; });
+
+canvas.addEventListener("mousemove", e=>{ mouse.x=e.clientX; mouse.y=e.clientY; });
+canvas.addEventListener("mousedown", ()=>{ mouse.down=true; });
+canvas.addEventListener("mouseup", ()=>{ mouse.down=false; });
+
+canvas.addEventListener("click",(e)=>{
+  const mx=e.clientX,my=e.clientY;
+  let clickedCircleIndex=-1;
+  for(let i=circles.length-1;i>=0;i--){ if(circles[i].clicked(mx,my)){ clickedCircleIndex=i; break; } }
+
+  if(mode==="split" && clickedCircleIndex!==-1){
+    const c = circles[clickedCircleIndex]; circles.splice(clickedCircleIndex,1);
+    const nr=c.r*0.7;
+    for(let k=0;k<2;k++) circles.push(new Circle(c.x,c.y,nr,rand(-3,3),rand(-3,3),c.color,(randomShapes?randomShape():c.shape)));
+  }
+  else if(mode==="explode" && clickedCircleIndex!==-1){
+    const c = circles[clickedCircleIndex]; circles.splice(clickedCircleIndex,1);
+    for(let j=0;j<8;j++){
+      const angle=(Math.PI*2/8)*j;
+      circles.push(new Circle(c.x,c.y,c.r*0.4,Math.cos(angle)*rand(2,6),Math.sin(angle)*rand(2,6),c.color,(randomShapes?randomShape():c.shape)));
+    }
+  }
+  else if(mode==="shoot"){
+    let shape = emojisOn ? "emoji" : (randomShapes?randomShape():"circle");
+    circles.push(new Circle(mx,my,80,rand(-6,6),rand(-6,6),randomBallColor(),shape));
+  }
+});
+
+window.addEventListener("resize",()=>{ canvas.width=window.innerWidth; canvas.height=window.innerHeight; });
+</script>
+
+</body>
+</html>
